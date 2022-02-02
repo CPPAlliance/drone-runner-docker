@@ -1,0 +1,49 @@
+FROM alpine:3.11 as build
+RUN apk add --update go gcc g++ git make automake autoconf libevent-dev pkgconfig
+RUN mkdir -p /root/go/src/github.com/drone-runners/drone-runner-docker
+WORKDIR /root/go/src/github.com/drone-runners
+COPY . drone-runner-docker/
+# RUN git clone https://github.com/drone-runners/drone-runner-docker
+WORKDIR /root/go/src/github.com/drone-runners/drone-runner-docker
+RUN ls -al
+# from build script
+# GOOS=linux GOARCH=amd64 go build -o release/linux/amd64/drone-runner-docker
+# from autoscaler
+# RUN go build -o release/linux/arm64/drone-autoscaler github.com/drone/autoscaler/cmd/drone-autoscaler
+RUN GOOS=linux GOARCH=s390x go build -o release/linux/s390x/drone-runner-docker
+RUN mkdir -p /opt/github
+WORKDIR /opt/github
+RUN git clone https://github.com/tmate-io/tmate
+WORKDIR /opt/github/tmate
+RUN apk add --update ncurses-dev msgpack-c-dev libssh-dev
+RUN sh autogen.sh
+RUN ./configure && make
+RUN make install
+RUN ls -al
+RUN which tmate
+
+FROM alpine:3 as alpine
+RUN apk add -U --no-cache ca-certificates
+
+RUN wget https://github.com/tmate-io/tmate/releases/download/2.4.0/tmate-2.4.0-static-linux-arm64v8.tar.xz
+RUN tar -xf tmate-2.4.0-static-linux-arm64v8.tar.xz
+RUN mv tmate-2.4.0-static-linux-arm64v8/tmate /bin/
+RUN chmod +x /bin/tmate
+
+# FROM scratch
+FROM alpine:3.11
+EXPOSE 3000
+
+ENV GODEBUG netdns=go
+ENV DRONE_PLATFORM_OS linux
+ENV DRONE_PLATFORM_ARCH s390x
+
+COPY --from=alpine /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# COPY --from=alpine /bin/tmate /bin/
+COPY --from=build /usr/local/bin/tmate /bin/
+
+LABEL com.centurylinklabs.watchtower.stop-signal="SIGINT"
+
+# ADD release/linux/s390x/drone-runner-docker /bin/
+COPY --from=build /root/go/src/github.com/drone-runners/drone-runner-docker/release/linux/s390x/drone-runner-docker /bin/
+ENTRYPOINT ["/bin/drone-runner-docker"]

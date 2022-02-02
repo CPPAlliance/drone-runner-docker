@@ -19,9 +19,9 @@ const cloneStepName = "clone"
 // helper function returns the clone image based on the
 // target operating system.
 func cloneImage(platform manifest.Platform) string {
-	switch platform.OS {
-	case "windows":
-		return "drone/git:latest"
+	switch {
+        case platform.OS == "linux" && platform.Arch == "s390x":
+                return "cppalliance/git:linux-s390x"
 	default:
 		return "drone/git:latest"
 	}
